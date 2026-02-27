@@ -1,23 +1,12 @@
 import ingest
+import rag_chain
 import streamlit as st
-import os 
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_classic.chains import create_retrieval_chain
-from langchain_classic.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate
-
-
-
-
-# load api key
-load_dotenv()
-api_key = os.getenv("GOOGLE_AI_STUDIO_API_KEY")
+import time
+from langchain_core.messages import HumanMessage, AIMessage
 
 
 # get data
 data_filepath = r"kdigo_guidelines\KDIGO-2024-CKD-Guideline.pdf"
-
 
 # load, chunk, embed, store as vector
 # use st.cache_resource to ensure that vectorestore is only generated once
@@ -26,33 +15,52 @@ def get_vectorstore():
     return ingest.load_vector_store(data_filepath)
 vector_store = get_vectorstore()
 
-# prep llm
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    api_key=os.getenv("GOOGLE_API_KEY")
-)
 
-# prep chain
+# retreiver to augment response
 retriever = vector_store.as_retriever()
 
-prompt = ChatPromptTemplate.from_template("""
-You are a helpful clinical assistant that answers questions about KDIGO clinical guidelines for CKD management. 
-Do not provide answers about other topics, only state that you cannot answer questions not relevant to KDIGO guidlines for CKD management.
-Use only the context provided to answer the question. If you don't know, say so. Do not hallucinate. Do not provide wrong information.
+# intialize rag chain
+chain = rag_chain.build_rag_chain(retriever)
 
-Context: {context}
-Question: {input}
-""")
+# initialize chat history in session state
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-combine_docs_chain = create_stuff_documents_chain(llm, prompt)
-rag_chain = create_retrieval_chain(retriever, combine_docs_chain)
-
-
+# ui
 st.title("KDIGO Guidelines Assistant")
 
-question = st.text_input("Ask a question about KDIGO guidelines")
+# display conversation history
+for message in st.session_state.chat_history:
+    if isinstance(message, HumanMessage):
+        st.chat_message("human").write(message.content)
+    else:
+        st.chat_message("ai").write(message.content)
+
+question = st.chat_input("Ask a question about KDIGO guidelines")
 
 if question:
-    response = rag_chain.invoke({"input": question})
-    st.write(response["answer"])
-
+    st.chat_message("human").write(question)
+    
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            answer = rag_chain.run_rag(chain,
+                                         question,
+                                         st.session_state.chat_history
+                                         )
+            st.chat_message("ai").write(answer)
+            
+            # update chat history
+            st.session_state.chat_history.append(HumanMessage(content=question))
+            st.session_state.chat_history.append(AIMessage(content=answer))
+            break
+        except Exception as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                if attempt < max_retries - 1:
+                    st.info("Rate limited, retrying...")
+                    time.sleep(20)
+                else:
+                    st.error("Rate limited. Please try again in a minute.")
+            else:
+                st.error(f"An error occurred: {str(e)}")
+                break
