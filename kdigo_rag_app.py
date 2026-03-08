@@ -3,20 +3,22 @@ import rag_chain
 import streamlit as st
 import time
 from langchain_core.messages import HumanMessage, AIMessage
+from embeddings import get_embeddings
+from langchain_pinecone import PineconeVectorStore
+from dotenv import load_dotenv
 
-
-# get data
-data_filepath = r"kdigo_guidelines\KDIGO-2024-CKD-Guideline.pdf"
-
-# load, chunk, embed, store as vector
-# use st.cache_resource to ensure that vectorestore is only generated once
+#  Access pinecone vector store
 @st.cache_resource
 def get_vectorstore():
-    return ingest.load_vector_store(data_filepath)
+    load_dotenv()
+    embeddings = get_embeddings()
+    return PineconeVectorStore.from_existing_index(
+        index_name="kdigo-guidelines-dense-index",
+        embedding=embeddings
+    )
+
+# Initialize pinecone vector store as retreiver for use in RAG chain
 vector_store = get_vectorstore()
-
-
-# retreiver to augment response
 retriever = vector_store.as_retriever()
 
 # intialize rag chain
@@ -29,6 +31,9 @@ if "chat_history" not in st.session_state:
 # ui
 st.title("KDIGO Guidelines Assistant")
 
+# write disclaimer
+st.sidebar.write("**Disclaimer:** This web app does not provide medical advice. This web app is built soley as an educational exercise in the implementation of RAG in LLMs. For medical advice regarding CKD, please consult a physician.")
+
 # display conversation history
 for message in st.session_state.chat_history:
     if isinstance(message, HumanMessage):
@@ -36,11 +41,12 @@ for message in st.session_state.chat_history:
     else:
         st.chat_message("ai").write(message.content)
 
+# Obtain input from user & run RAG to generate response
 question = st.chat_input("Ask a question about KDIGO guidelines")
-
 if question:
     st.chat_message("human").write(question)
     
+    # Loop several times in case rate limit error is encountered
     max_retries = 3
     for attempt in range(max_retries):
         try:
