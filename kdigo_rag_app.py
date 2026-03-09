@@ -32,7 +32,7 @@ if "chat_history" not in st.session_state:
 st.title("KDIGO Guidelines Assistant")
 
 # write disclaimer
-st.sidebar.write("**Disclaimer:** This web app does not provide medical advice. This web app is built soley as an educational exercise in the implementation of RAG in LLMs. For medical advice regarding CKD, please consult a physician.")
+st.sidebar.write("**Disclaimer:** This web app does not provide medical advice. This web app is built solely as an educational exercise in the implementation of RAG in LLMs. For medical advice regarding CKD, please consult a physician.")
 
 # display conversation history
 for message in st.session_state.chat_history:
