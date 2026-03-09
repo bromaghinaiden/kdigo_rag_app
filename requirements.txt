@@ -76,7 +76,6 @@ ormsgpack==1.12.2
 packaging==24.2
 pandas==2.3.3
 pillow==12.1.1
-pinecone==8.0.0
 pinecone-plugin-assistant==3.0.2
 pinecone-plugin-interface==0.0.7
 propcache==0.4.1
@@ -138,4 +137,5 @@ websockets==15.0.1
 xxhash==3.6.0
 yarl==1.22.0
 zstandard==0.25.0
+
 
